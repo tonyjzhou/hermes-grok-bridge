@@ -25,3 +25,15 @@ Neither template ships your hosts, SSH keys, or API keys. You point env / MCP co
 
 ## Keywords
 hermes, grok bot, SSH, relay, bridge, connector, MCP, Tailscale, herdr, comms, communication, API, fleet, Desktop-primary
+
+
+## Optional profile pictures (marketplace bots)
+
+Use any of these as the Grok Bot picture for **Hermes SSH Relay** or **Hermes API Fleet** (set on the bot → Edit → avatar). They are optional assets only — not required to install the bridge.
+
+| File | Look |
+|------|------|
+| [`assets/pfp/hermes-pfp-blue.jpg`](./assets/pfp/hermes-pfp-blue.jpg) | Blue CRT / code rain |
+| [`assets/pfp/hermes-pfp-green.jpg`](./assets/pfp/hermes-pfp-green.jpg) | Green matrix CRT |
+| [`assets/pfp/hermes-pfp-amber.jpg`](./assets/pfp/hermes-pfp-amber.jpg) | Amber terminal CRT |
+
