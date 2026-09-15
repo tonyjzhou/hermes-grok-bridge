@@ -1,0 +1,5 @@
+.env
+*.key
+auth_token
+__pycache__/
+.DS_Store
