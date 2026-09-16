@@ -8,8 +8,9 @@ Two ways to put your Hermes agent inside the Grok Bot app (or wire it as a conne
 | **[Native API](./docs/NATIVE_API.md)** | Gateway + API server (`:8642`) already running; parallel fleet asks | Needs API enabled + private reach to `:8642` |
 
 **Marketplace templates** (cross-linked):
-- *Hermes SSH Relay* — SSH method
-- *Hermes API Fleet* — native `:8642` method
+- [Hermes SSH Relay](https://x.ai/bot/NVF3Rx9T7jkQPsqYjeDn-) — SSH method (early setup / fallback)
+- [Hermes API Fleet](https://x.ai/bot/5KLpaL-JIM2q629kbTh5L) — native `:8642` method (preferred for orchestration)
+- [Hermes Fleet Ops](https://x.ai/bot/rzq0UV2MmBsvVR1EspZE-) — multi-Mac ops desk (updates, Bitwarden SSOT, homogenization, memory health)
 
 Neither template ships your hosts, SSH keys, or API keys. You point env / MCP config at **your** machines after install. Secrets stay in your secret manager or local env — never in this repo.
 
