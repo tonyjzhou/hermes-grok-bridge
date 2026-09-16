@@ -18,3 +18,6 @@ Default bind is often `127.0.0.1` — for Tailscale clients you must set `API_SE
 4. Prefer this path for COS/ops orchestration; keep identity Grok bots optional.
 
 See also marketplace template **Hermes API Fleet**. If the host is Desktop-only with no gateway, use [SSH_RELAY.md](./SSH_RELAY.md) instead.
+
+## Messaging tokens (orthogonal)
+Enabling the API server on `:8642` is orthogonal to gateway messaging bots. If you also run Telegram/Discord (etc.) gateways across multiple Hermes profiles/hosts, never store one shared `TELEGRAM_BOT_TOKEN` in a fleet-wide vault that every host pulls. Use `TELEGRAM_BOT_TOKEN_<PROFILE>` (profile uppercased, `-`→`_`) so Hermes auto-aliases per active profile. See marketplace template **Hermes Fleet Ops** and skill `hermes-fleet-messaging-token-isolation`.

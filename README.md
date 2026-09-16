@@ -18,6 +18,7 @@ Neither template ships your hosts, SSH keys, or API keys. You point env / MCP co
 - Never commit `API_SERVER_KEY`, auth tokens, or live ledgers
 - Do **not** have Grok bots write into Hermes memory plugins (Hindsight, LCM, Graphiti, Omega, etc. — any of them) unless you have an explicit memory plan
 - Account-wide MCP tools are visible to all of a user’s Grok Bots — confine identity bots in their system prompt
+- HTTP `:8642` does not replace messaging-token isolation — if you also run Telegram/Discord (etc.) gateways across multiple Hermes profiles/hosts, never store one shared `TELEGRAM_BOT_TOKEN` in a fleet-wide vault that every host pulls. Use `TELEGRAM_BOT_TOKEN_<PROFILE>` (profile uppercased, `-`→`_`) so Hermes auto-aliases per active profile. See marketplace template **Hermes Fleet Ops** and skill `hermes-fleet-messaging-token-isolation`.
 
 ## Repo layout
 - `ssh-relay/` — stdio MCP (`ask`, `health`) via SSH → `hermes -z`
