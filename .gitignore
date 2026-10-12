@@ -3,3 +3,6 @@
 auth_token
 __pycache__/
 .DS_Store
+
+# Local ops notes and API server keys — never commit (public repo)
+ops/
