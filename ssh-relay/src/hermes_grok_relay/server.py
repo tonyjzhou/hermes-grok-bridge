@@ -27,7 +27,7 @@ from typing import Any
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "hermes-grok-relay"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
 
 
 def _log(msg: str) -> None:
@@ -164,6 +164,126 @@ def ask_via_http(prompt: str) -> dict[str, Any]:
 
 
 
+
+def http_root() -> str:
+    """Base URL without trailing /v1 or /chat/completions."""
+    url = env("HERMES_RELAY_HTTP_URL", "").rstrip("/")
+    if url.endswith("/chat/completions"):
+        url = url[: -len("/chat/completions")]
+    if url.endswith("/v1"):
+        url = url[:-3]
+    return url.rstrip("/")
+
+
+def http_auth_headers() -> dict[str, str] | None:
+    key = env("HERMES_RELAY_HTTP_KEY")
+    if not key:
+        return None
+    return {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "User-Agent": f"{SERVER_NAME}/{SERVER_VERSION}",
+    }
+
+
+def ask_start_via_http(prompt: str) -> dict[str, Any]:
+    """POST /v1/runs — returns run_id immediately (async ask)."""
+    if mode() != "http":
+        return {"ok": False, "error": "ask_start requires HERMES_RELAY_MODE=http"}
+    headers = http_auth_headers()
+    root = http_root()
+    if not headers or not root:
+        return {
+            "ok": False,
+            "error": "HERMES_RELAY_HTTP_URL and HERMES_RELAY_HTTP_KEY required for ask_start",
+        }
+    endpoint = root + "/v1/runs"
+    body = json.dumps({"input": prompt}).encode()
+    req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            payload = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        return {
+            "ok": False,
+            "mode": "http",
+            "error": f"HTTP {e.code}",
+            "body": e.read().decode(errors="replace")[:500],
+        }
+    except Exception as e:
+        return {"ok": False, "mode": "http", "error": type(e).__name__}
+    run_id = payload.get("run_id")
+    if not run_id:
+        return {"ok": False, "mode": "http", "error": "no run_id in response", "raw": payload}
+    return {
+        "ok": True,
+        "mode": "http",
+        "async": True,
+        "identity": identity_label(),
+        "run_id": run_id,
+        "status": payload.get("status", "started"),
+        "elapsed_s": round(time.time() - t0, 3),
+        "next": "Call ask_status with this run_id until status is completed/failed/cancelled/interrupted",
+    }
+
+
+def ask_status_via_http(run_id: str) -> dict[str, Any]:
+    """GET /v1/runs/{run_id} — poll async ask."""
+    if mode() != "http":
+        return {"ok": False, "error": "ask_status requires HERMES_RELAY_MODE=http"}
+    headers = http_auth_headers()
+    root = http_root()
+    if not headers or not root:
+        return {
+            "ok": False,
+            "error": "HERMES_RELAY_HTTP_URL and HERMES_RELAY_HTTP_KEY required for ask_status",
+        }
+    if not run_id.strip():
+        return {"ok": False, "error": "run_id is required"}
+    endpoint = root + "/v1/runs/" + run_id.strip()
+    # GET should not send Content-Type body; drop Content-Type for GET
+    get_headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
+    req = urllib.request.Request(endpoint, headers=get_headers, method="GET")
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            payload = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        return {
+            "ok": False,
+            "mode": "http",
+            "error": f"HTTP {e.code}",
+            "body": e.read().decode(errors="replace")[:500],
+        }
+    except Exception as e:
+        return {"ok": False, "mode": "http", "error": type(e).__name__}
+    status = payload.get("status") or ""
+    terminal = status in ("completed", "failed", "cancelled", "interrupted")
+    out: dict[str, Any] = {
+        "ok": True,
+        "mode": "http",
+        "async": True,
+        "identity": identity_label(),
+        "run_id": payload.get("run_id") or run_id,
+        "status": status,
+        "done": terminal,
+        "elapsed_s": round(time.time() - t0, 3),
+    }
+    if terminal:
+        if status == "completed":
+            out["answer"] = payload.get("output") or ""
+        else:
+            out["error"] = payload.get("error") or status
+            out["ok"] = False
+        if payload.get("usage") is not None:
+            out["usage"] = payload.get("usage")
+        if payload.get("model") is not None:
+            out["model"] = payload.get("model")
+    return out
+
+
+
 def health() -> dict[str, Any]:
     m = mode()
     if m == "http":
@@ -209,9 +329,10 @@ TOOLS = [
         "name": "ask",
         "description": (
             f"Send a natural-language request to {identity_label()} (the Hermes agent on the "
-            "linked host) and return that agent's answer. Comms relay only — forward the user "
-            "ask; do not instruct Hermes to write/save/upsert into Hindsight or other memory "
-            "stores. Do not invent answers — always call this tool."
+            "linked host) and return that agent's answer. Sync path — may hit MCP host timeouts "
+            "on long turns; prefer ask_start + ask_status for long work. Comms relay only — "
+            "forward the user ask; do not instruct Hermes to write/save/upsert into Hindsight or "
+            "other memory stores. Do not invent answers — always call this tool."
         ),
         "inputSchema": {
             "type": "object",
@@ -222,6 +343,41 @@ TOOLS = [
                 }
             },
             "required": ["prompt"],
+        },
+    },
+    {
+        "name": "ask_start",
+        "description": (
+            f"Start an async ask to {identity_label()} via Hermes /v1/runs. Returns run_id "
+            "immediately so long turns do not hit the MCP host timeout. Then poll ask_status. "
+            "Comms relay only — do not invent answers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Exact user ask to forward to Hermes.",
+                }
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "ask_status",
+        "description": (
+            "Poll an async Hermes ask started with ask_start. Returns status; when done, "
+            "includes answer (completed) or error (failed/cancelled/interrupted)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "type": "string",
+                    "description": "run_id from ask_start.",
+                }
+            },
+            "required": ["run_id"],
         },
     },
     {
@@ -242,6 +398,14 @@ def handle_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if mode() == "http":
             return ask_via_http(str(prompt))
         return ask_via_ssh(str(prompt))
+    if name == "ask_start":
+        prompt = (arguments or {}).get("prompt") or ""
+        if not str(prompt).strip():
+            return {"ok": False, "error": "prompt is required"}
+        return ask_start_via_http(str(prompt))
+    if name == "ask_status":
+        run_id = (arguments or {}).get("run_id") or ""
+        return ask_status_via_http(str(run_id))
     return {"ok": False, "error": f"unknown tool {name}"}
 
 
